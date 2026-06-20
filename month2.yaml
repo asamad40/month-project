@@ -1,0 +1,318 @@
+---
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Month 2 Project - Three-Tier Web Application
+  VPC with public/private subnets, EC2 webserver, RDS database,
+  S3 static assets, secured with IAM roles and security groups.
+
+# ================================================
+# PARAMETERS
+# ================================================
+Parameters:
+  KeyPairName:
+    Type: String
+    Description: "Name of an existing EC2 KeyPair for SSH access"
+
+  MyIP:
+    Type: String
+    Description: "Your public IP address (for SSH access only)"
+    Default: "102.91.72.69"              # <-- UPDATE TO YOUR CURRENT IP
+
+  DBUsername:
+    Type: String
+    Description: "Master username for RDS database"
+    Default: "admin"
+    NoEcho: true
+
+  DBPassword:
+    Type: String
+    Description: "Master password for RDS database (min 8 chars)"
+    NoEcho: true
+    MinLength: 8
+
+# ================================================
+# RESOURCES
+# ================================================
+Resources:
+
+  # ------------------------------------------------
+  # 1. VPC & NETWORKING
+  # ------------------------------------------------
+
+  MyVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: month2-vpc
+
+  MyInternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: month2-igw
+
+  AttachGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref MyVPC
+      InternetGatewayId: !Ref MyInternetGateway
+
+  PublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref MyVPC
+      CidrBlock: 10.0.1.0/24
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: month2-public-subnet
+
+  PrivateSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref MyVPC
+      CidrBlock: 10.0.2.0/24
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: month2-private-subnet
+
+  PrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref MyVPC
+      CidrBlock: 10.0.3.0/24
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: month2-private-subnet-2
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref MyVPC
+      Tags:
+        - Key: Name
+          Value: month2-public-rt
+
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: AttachGateway
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref MyInternetGateway
+
+  PublicSubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet
+      RouteTableId: !Ref PublicRouteTable
+
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref MyVPC
+      Tags:
+        - Key: Name
+          Value: month2-private-rt
+
+  PrivateSubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet
+      RouteTableId: !Ref PrivateRouteTable
+
+  PrivateSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet2
+      RouteTableId: !Ref PrivateRouteTable
+
+  # ------------------------------------------------
+  # 2. SECURITY GROUPS
+  # ------------------------------------------------
+
+  WebServerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: "Allow SSH from my IP only and HTTP from anywhere"
+      VpcId: !Ref MyVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !Ref MyIP
+          Description: "SSH from my IP only"
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+          Description: "HTTP from anywhere"
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: month2-web-sg
+
+  DBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: "Allow MySQL from Web SG only"
+      VpcId: !Ref MyVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 3306
+          ToPort: 3306
+          SourceSecurityGroupId: !Ref WebServerSecurityGroup
+          Description: "MySQL from Web SG only"
+      Tags:
+        - Key: Name
+          Value: month2-db-sg
+
+  # ------------------------------------------------
+  # 3. EC2 WEB SERVER
+  # ------------------------------------------------
+
+  WebServerInstance:
+    Type: AWS::EC2::Instance
+    DependsOn:
+      - AttachGateway
+      - PublicSubnetRouteTableAssociation
+    Properties:
+      InstanceType: t3.micro
+      KeyName: !Ref KeyPairName
+      ImageId: ami-0f38e4c6b228846b1
+      SubnetId: !Ref PublicSubnet
+      SecurityGroupIds:
+        - !Ref WebServerSecurityGroup
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash -xe
+          yum update -y
+          amazon-linux-extras install nginx1 -y
+          systemctl start nginx
+          systemctl enable nginx
+          echo "<h1>Hello from Month 2 Project!</h1>" > /usr/share/nginx/html/index.html
+      Tags:
+        - Key: Name
+          Value: month2-web-server
+
+  # ------------------------------------------------
+  # 4. RDS DATABASE (FIXED VERSION)
+  # ------------------------------------------------
+
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: "Subnet group for RDS (needs 2 AZs)"
+      SubnetIds:
+        - !Ref PrivateSubnet
+        - !Ref PrivateSubnet2
+
+  MyDatabase:
+    Type: AWS::RDS::DBInstance
+    DependsOn: DBSubnetGroup
+    Properties:
+      DBInstanceClass: db.t3.micro
+      Engine: mysql
+      EngineVersion: "8.0.46"   # ✅ Exists! (Latest 8.0.x)                # <-- FIXED: Changed from 8.0.35
+      MasterUsername: !Ref DBUsername
+      MasterUserPassword: !Ref DBPassword
+      DBName: month2db
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      VPCSecurityGroups:
+        - !Ref DBSecurityGroup
+      AllocatedStorage: 20
+      StorageType: gp2
+      BackupRetentionPeriod: 7
+      MultiAZ: false
+      PubliclyAccessible: false
+      Tags:
+        - Key: Name
+          Value: month2-database
+
+  # ------------------------------------------------
+  # 5. S3 BUCKET + IAM ROLE
+  # ------------------------------------------------
+
+  StaticBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "month2-static-${AWS::AccountId}"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: false
+        BlockPublicPolicy: false
+        IgnorePublicAcls: false
+        RestrictPublicBuckets: false
+      Tags:
+        - Key: Name
+          Value: month2-static-bucket
+
+  EC2S3Role:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess
+      Tags:
+        - Key: Name
+          Value: month2-ec2-s3-role
+
+  EC2InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref EC2S3Role
+
+# ================================================
+# OUTPUTS (ADD MISSING OUTPUTS)
+# ================================================
+Outputs:
+  VPCId:
+    Description: "VPC ID"
+    Value: !Ref MyVPC
+
+  PublicSubnetId:
+    Description: "Public Subnet ID (Web Tier)"
+    Value: !Ref PublicSubnet
+
+  PrivateSubnetId:
+    Description: "Private Subnet ID (DB Tier - AZ1)"
+    Value: !Ref PrivateSubnet
+
+  PrivateSubnet2Id:
+    Description: "Private Subnet ID (DB Tier - AZ2)"
+    Value: !Ref PrivateSubnet2
+
+  # ----- ADD THESE OUTPUTS (FIX 2) -----
+  WebServerPublicIP:
+    Description: "Public IP of the web server"
+    Value: !GetAtt WebServerInstance.PublicIp
+
+  WebServerURL:
+    Description: "URL to access the website"
+    Value: !Sub "http://${WebServerInstance.PublicIp}"
+
+  DatabaseEndpoint:
+    Description: "RDS MySQL endpoint"
+    Value: !GetAtt MyDatabase.Endpoint.Address
+
+  StaticBucketName:
+    Description: "S3 bucket name for static assets"
+    Value: !Ref StaticBucket
