@@ -1,107 +1,208 @@
-# Month 2 Project - 3-Tier Web Application on AWS
+# Month 2 Project – AWS 3-Tier Web Application using CloudFormation
 
 ## 📖 Project Overview
 
-This project deploys a **complete 3-Tier Web Application** on Amazon Web Services (AWS) using **Infrastructure as Code** with AWS CloudFormation. The architecture follows industry best practices for security, scalability, and maintainability.
+This project deploys a **3-Tier Web Application** on **Amazon Web Services (AWS)** using **Infrastructure as Code (IaC)** with **AWS CloudFormation**.
 
-### What is a 3-Tier Architecture?
+The infrastructure provisions a secure AWS environment consisting of:
 
-A 3-tier architecture separates an application into three logical layers:
+* Custom VPC
+* Public & Private Subnets
+* Internet Gateway
+* Route Tables
+* EC2 Web Server (Amazon Linux 2 + Nginx)
+* Amazon RDS MySQL Database
+* Amazon S3 Bucket
+* IAM Role & Instance Profile
+* Security Groups
 
-| Tier | Purpose | In This Project |
-|------|---------|-----------------|
-| **Presentation Tier (Web)** | User interface | Nginx web server serving HTML |
-| **Application Tier (App)** | Business logic | EC2 instance with IAM role for S3 access |
-| **Database Tier (Data)** | Data storage | RDS MySQL database in private subnet |
-
-This separation allows each tier to be scaled, secured, and maintained independently.
-
----
-
-## 🎯 Project Requirements
-
-This project fulfills the following requirements:
-
-### 1. VPC & Networking
-- ✅ Custom VPC with CIDR block `10.0.0.0/16`
-- ✅ Public subnet `10.0.1.0/24` for web servers
-- ✅ Private subnet `10.0.2.0/24` for application servers
-- ✅ Private subnet `10.0.3.0/24` for database (RDS requires 2 AZs)
-- ✅ Internet Gateway attached to VPC
-- ✅ Route tables: public subnet routes `0.0.0.0/0` to Internet Gateway
-- ✅ Private subnets have no internet route (isolated)
-
-### 2. Security Groups
-- ✅ **web-sg**: Allows SSH (port 22) from your IP only
-- ✅ **web-sg**: Allows HTTP (port 80) from anywhere (`0.0.0.0/0`)
-- ✅ **db-sg**: Allows MySQL (port 3306) from web-sg ONLY
-- ✅ **db-sg**: NEVER allows access from `0.0.0.0/0` (database is private)
-
-### 3. EC2 Web Server
-- ✅ Launched in public subnet
-- ✅ Attached to web-sg
-- ✅ UserData script installs Nginx on boot
-- ✅ Confirmed reachable via public IP in browser
-- ✅ Displays: "Hello from Month 2 Project!"
-
-### 4. RDS Database
-- ✅ Launched in private subnet group (2 AZs minimum)
-- ✅ Attached to db-sg
-- ✅ Public accessibility: **NO** (not exposed to internet)
-- ✅ Only accessible from EC2 web server
-- ✅ MySQL version: 8.0.46
-
-### 5. S3 + IAM Role
-- ✅ S3 bucket created for static assets
-- ✅ IAM Role with S3 read-only access
-- ✅ IAM Role attached to EC2 instance
-- ✅ **No access keys anywhere** (uses IAM Role)
-- ✅ EC2 can access S3 without `aws configure`
-
-### 6. Documentation & Publishing
-- ✅ README.md with detailed setup steps
-- ✅ Architecture diagram (separate file)
-- ✅ Screenshot of working application
-- ✅ Pushed to GitHub
+The solution demonstrates AWS networking, compute, storage, database, IAM, and Infrastructure as Code best practices.
 
 ---
 
-## 🛠️ Technologies Used
+# 🏗️ Architecture Diagram
 
-| Category | Technology | Purpose |
-|----------|------------|---------|
-| **Infrastructure as Code** | AWS CloudFormation | Define and deploy resources |
-| **Web Server** | Amazon Linux 2 + Nginx | Serve web pages |
-| **Database** | Amazon RDS MySQL 8.0.46 | Managed relational database |
-| **Storage** | Amazon S3 | Store static assets |
-| **Networking** | Custom VPC | Isolated network with subnets |
-| **Security** | Security Groups + IAM Roles | Control access and permissions |
-| **Scripting** | Bash | Automate deployment |
-| **Version Control** | Git + GitHub | Code management |
+The following diagram illustrates the infrastructure deployed by the CloudFormation template.
+
+![AWS 3-Tier Architecture](architecture-diagram.png)
 
 ---
 
-## 📋 Prerequisites
+# 🏛️ 3-Tier Architecture
 
-### AWS Account
-- Valid AWS account with billing enabled
-- IAM user with permissions to create VPC, EC2, RDS, S3, IAM
-- AWS CLI installed and configured
+| Tier                  | Component        | Purpose                                   |
+| --------------------- | ---------------- | ----------------------------------------- |
+| **Presentation Tier** | EC2 + Nginx      | Serves web content to users               |
+| **Application Tier**  | EC2 + IAM Role   | Securely accesses AWS services such as S3 |
+| **Database Tier**     | Amazon RDS MySQL | Stores application data                   |
 
-### Local Machine
-- Git installed
-- Terminal access (Mac/Linux) or WSL (Windows)
+---
 
-### EC2 KeyPair
+# 🚀 AWS Resources
+
+## Networking
+
+* Custom VPC (10.0.0.0/16)
+* Internet Gateway
+* Public Route Table
+* Private Route Table
+* Public Subnet (10.0.1.0/24)
+* Private Subnet AZ1 (10.0.2.0/24)
+* Private Subnet AZ2 (10.0.3.0/24)
+* DB Subnet Group
+
+## Compute
+
+* Amazon EC2 (t3.micro)
+* Amazon Linux 2
+* Nginx Web Server
+
+The UserData script automatically:
+
+* Updates the server
+* Installs Nginx
+* Starts the service
+* Enables Nginx on boot
+* Creates the default webpage
+
+## Database
+
+* Amazon RDS MySQL
+* Engine Version: **8.0.46**
+* DB Instance: **db.t3.micro**
+* Private subnet deployment
+* Not publicly accessible
+
+## Storage
+
+* Amazon S3 Bucket for static assets
+
+## IAM
+
+The EC2 instance uses:
+
+* IAM Role
+* Instance Profile
+* AmazonS3ReadOnlyAccess Policy
+
+No AWS Access Keys are stored on the instance.
+
+---
+
+# 🔒 Security
+
+### Web Security Group
+
+Allows:
+
+* SSH (22) from your public IP only
+* HTTP (80) from anywhere
+
+### Database Security Group
+
+Allows:
+
+* MySQL (3306)
+* Source = Web Security Group only
+
+The database is never exposed to the Internet.
+
+---
+
+# 📂 Repository Structure
+
+```text
+.
+├── README.md
+├── month2.yaml
+├── bash.sh
+└── architecture-diagram.png
+```
+
+---
+
+# ⚙️ Deployment
+
+Make the deployment script executable:
+
 ```bash
-# Check if you have a keypair
-aws ec2 describe-key-pairs --region eu-north-1 --query "KeyPairs[].KeyName" --output table
+chmod +x bash.sh
+```
 
-# If you don't have one, create it
-aws ec2 create-key-pair \
-  --key-name virus-key \
-  --query "KeyMaterial" \
-  --output text > ~/Downloads/virus-key.pem
+Deploy the stack:
 
-# Set correct permissions (important!)
-chmod 400 ~/Downloads/virus-key.pem
+```bash
+./bash.sh
+```
+
+The script automatically:
+
+* Detects your public IP
+* Deploys the CloudFormation stack
+* Creates the VPC
+* Creates the subnets
+* Creates the EC2 instance
+* Creates the RDS database
+* Creates the S3 bucket
+* Displays the stack outputs
+
+---
+
+# 📤 CloudFormation Outputs
+
+After deployment, CloudFormation returns:
+
+* VPC ID
+* Public Subnet ID
+* Private Subnet IDs
+* EC2 Public IP
+* Web Server URL
+* RDS Endpoint
+* S3 Bucket Name
+
+Open the WebServerURL in your browser to verify the deployment.
+
+---
+
+# 🛠️ Technologies Used
+
+* AWS CloudFormation
+* Amazon EC2
+* Amazon Linux 2
+* Nginx
+* Amazon RDS MySQL
+* Amazon S3
+* IAM Roles
+* Security Groups
+* Bash
+* Git
+* GitHub
+
+---
+
+# 📚 Learning Outcomes
+
+This project demonstrates practical experience with:
+
+* Infrastructure as Code (IaC)
+* Amazon VPC
+* Public and Private Subnets
+* Route Tables
+* Internet Gateway
+* Amazon EC2
+* Amazon RDS
+* Amazon S3
+* IAM Roles
+* Security Groups
+* Bash Automation
+* GitHub
+
+---
+
+# 👤 Author
+
+Olagbile Abdulsamad Akinkunmi
+
+AWS Cloud / DevOps Portfolio Project
+
+Month 2 – AWS 3-Tier Web Application using CloudFormation
